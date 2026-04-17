@@ -23,7 +23,7 @@ class WordCrushApp extends StatelessWidget {
         initialRoute: userRepository.hasUsername()
             ? AppRoutes.home
             : AppRoutes.username,
-        routes: AppRoutes.routes,
+        onGenerateRoute: AppRoutes.onGenerateRoute,
       ),
     );
   }
