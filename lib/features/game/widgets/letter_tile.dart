@@ -23,7 +23,11 @@ class LetterTile extends StatelessWidget {
     final bg = selected ? AppColors.tileSelected : AppColors.cardTile;
     const fg = AppColors.textOnTile;
 
-    return AnimatedContainer(
+    return AnimatedScale(
+      duration: const Duration(milliseconds: 140),
+      scale: selected ? 1.06 : 1.0,
+      curve: Curves.easeOutBack,
+      child: AnimatedContainer(
       duration: const Duration(milliseconds: 140),
       margin: const EdgeInsets.all(2),
       decoration: BoxDecoration(
@@ -89,6 +93,7 @@ class LetterTile extends StatelessWidget {
               ),
             ),
         ],
+      ),
       ),
     );
   }
