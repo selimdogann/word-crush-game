@@ -5,6 +5,8 @@ import '../../../data/models/difficulty.dart';
 import '../../../data/repositories/inventory_repository.dart';
 import '../../../data/repositories/stats_repository.dart';
 import '../../../data/repositories/user_repository.dart';
+import '../../../data/services/board_analyzer.dart';
+import '../../../data/services/dictionary_service.dart';
 import '../../../data/services/word_validator.dart';
 import '../viewmodel/game_viewmodel.dart';
 import '../widgets/game_board_view.dart';
@@ -25,6 +27,7 @@ class GameScreen extends StatelessWidget {
         statsRepo: ctx.read<StatsRepository>(),
         userRepo: ctx.read<UserRepository>(),
         inventoryRepo: ctx.read<InventoryRepository>(),
+        analyzer: BoardAnalyzer(ctx.read<DictionaryService>()),
       ),
       child: const _GameView(),
     );
@@ -34,10 +37,50 @@ class GameScreen extends StatelessWidget {
 class _GameView extends StatelessWidget {
   const _GameView();
 
+  Future<bool> _confirmExit(BuildContext context, GameViewModel vm) async {
+    if (vm.isGameOver || vm.score == 0 && vm.totalWords == 0) return true;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Oyundan cik',
+            style: TextStyle(color: AppColors.textPrimary)),
+        content: const Text(
+          'Oyunu simdi biraktirirsan mevcut skor kaydedilecek. Emin misin?',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(false),
+            child: const Text('Vazgec'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(true),
+            child: const Text('Cik'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await vm.abandonGame();
+      return true;
+    }
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<GameViewModel>();
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final allow = await _confirmExit(context, vm);
+        if (allow && context.mounted) {
+          Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
       appBar: AppBar(
         title:
             Text('${vm.difficulty.label} - ${vm.board.size}x${vm.board.size}'),
@@ -82,10 +125,16 @@ class _GameView extends StatelessWidget {
                 ),
               const SizedBox(height: 12),
               if (vm.isGameOver)
-                _GameOverBanner(score: vm.score, longestWord: vm.longestWord),
+                _GameOverBanner(
+                  score: vm.score,
+                  longestWord: vm.longestWord,
+                  totalWords: vm.totalWords,
+                  durationSeconds: vm.durationSeconds,
+                ),
             ],
           ),
         ),
+      ),
       ),
     );
   }
@@ -204,42 +253,130 @@ class _HudChip extends StatelessWidget {
 }
 
 class _GameOverBanner extends StatelessWidget {
-  const _GameOverBanner({required this.score, required this.longestWord});
+  const _GameOverBanner({
+    required this.score,
+    required this.longestWord,
+    required this.totalWords,
+    required this.durationSeconds,
+  });
   final int score;
   final String longestWord;
+  final int totalWords;
+  final int durationSeconds;
+
+  String _fmtDuration(int seconds) {
+    final m = (seconds ~/ 60).toString().padLeft(2, '0');
+    final s = (seconds % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
+    final coinReward = (score / 10).floor();
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOutCubic,
+      builder: (context, t, child) {
+        return Opacity(
+          opacity: t,
+          child: Transform.translate(
+            offset: Offset(0, (1 - t) * 20),
+            child: child,
+          ),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: AppColors.primary.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Column(
+          children: [
+            const Icon(Icons.emoji_events_rounded,
+                color: AppColors.accent, size: 40),
+            const SizedBox(height: 6),
+            const Text(
+              'Oyun bitti!',
+              style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _SummaryStat(label: 'Puan', value: '$score'),
+                _SummaryStat(label: 'Kelime', value: '$totalWords'),
+                _SummaryStat(
+                    label: 'Sure', value: _fmtDuration(durationSeconds)),
+              ],
+            ),
+            if (longestWord.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text('En uzun kelime: $longestWord',
+                  style: const TextStyle(
+                      color: AppColors.textSecondary, fontSize: 13)),
+            ],
+            if (coinReward > 0) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.monetization_on_rounded,
+                        color: AppColors.accent, size: 18),
+                    const SizedBox(width: 4),
+                    Text('+$coinReward coin',
+                        style: const TextStyle(
+                            color: AppColors.accent,
+                            fontWeight: FontWeight.w700)),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 14),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Ana Ekrana Don'),
+            ),
+          ],
+        ),
       ),
-      child: Column(
-        children: [
-          const Text(
-            'Hamleler bitti!',
-            style: TextStyle(
+    );
+  }
+}
+
+class _SummaryStat extends StatelessWidget {
+  const _SummaryStat({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(value,
+            style: const TextStyle(
                 color: AppColors.textPrimary,
                 fontSize: 18,
-                fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 6),
-          Text('Skor: $score',
-              style: const TextStyle(color: AppColors.accent, fontSize: 16)),
-          if (longestWord.isNotEmpty)
-            Text('En uzun kelime: $longestWord',
-                style: const TextStyle(
-                    color: AppColors.textSecondary, fontSize: 14)),
-          const SizedBox(height: 12),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Ana Ekrana Don'),
-          ),
-        ],
-      ),
+                fontWeight: FontWeight.w700)),
+        Text(label,
+            style: const TextStyle(
+                color: AppColors.textSecondary, fontSize: 12)),
+      ],
     );
   }
 }

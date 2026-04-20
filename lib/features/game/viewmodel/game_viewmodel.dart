@@ -9,6 +9,7 @@ import '../../../data/models/stats_model.dart';
 import '../../../data/repositories/inventory_repository.dart';
 import '../../../data/repositories/stats_repository.dart';
 import '../../../data/repositories/user_repository.dart';
+import '../../../data/services/board_analyzer.dart';
 import '../../../data/services/board_factory.dart';
 import '../../../data/services/joker_executor.dart';
 import '../../../data/services/letter_generator.dart';
@@ -54,6 +55,7 @@ class GameViewModel extends ChangeNotifier {
     LetterGenerator? generator,
     PowerExecutor? powerExecutor,
     JokerExecutor? jokerExecutor,
+    BoardAnalyzer? analyzer,
   })  : _validator = validator,
         _statsRepo = statsRepo,
         _userRepo = userRepo,
@@ -61,12 +63,14 @@ class GameViewModel extends ChangeNotifier {
         _factory = factory ?? BoardFactory(),
         _generator = generator ?? LetterGenerator(),
         _power = powerExecutor ?? const PowerExecutor(),
-        _joker = jokerExecutor ?? JokerExecutor() {
+        _joker = jokerExecutor ?? JokerExecutor(),
+        _analyzer = analyzer {
     _board = _factory.create(difficulty);
     _remainingMoves = difficulty.moveCount;
     _startedAt = DateTime.now();
     _inventoryModel = _inventoryRepo.current;
     _loadMultiplier();
+    _ensureSolvable();
   }
 
   final Difficulty difficulty;
@@ -78,6 +82,7 @@ class GameViewModel extends ChangeNotifier {
   final LetterGenerator _generator;
   final PowerExecutor _power;
   final JokerExecutor _joker;
+  final BoardAnalyzer? _analyzer;
 
   late Board _board;
   late int _remainingMoves;
@@ -105,6 +110,16 @@ class GameViewModel extends ChangeNotifier {
   bool get isGameOver => _remainingMoves <= 0;
   int get durationSeconds =>
       DateTime.now().difference(_startedAt).inSeconds;
+
+  void _ensureSolvable() {
+    final analyzer = _analyzer;
+    if (analyzer == null) return;
+    var attempts = 0;
+    while (attempts < 5 && !analyzer.hasAnyValidWord(_board)) {
+      _board = _factory.reshuffle(_board);
+      attempts++;
+    }
+  }
 
   Future<void> _loadMultiplier() async {
     final value = await _userRepo.consumeNextScoreMultiplier();
@@ -226,6 +241,7 @@ class GameViewModel extends ChangeNotifier {
         _board.withRemovedCells(removedIds).applyGravity(_generator.next);
     _selection.clear();
     _remainingMoves = (_remainingMoves - 1).clamp(0, _remainingMoves);
+    _ensureSolvable();
     await _finalizeIfNeeded();
     notifyListeners();
   }
