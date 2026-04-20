@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../data/models/difficulty.dart';
+import '../../../data/services/word_validator.dart';
 import '../viewmodel/game_viewmodel.dart';
 import '../widgets/game_board_view.dart';
+import '../widgets/word_preview_bar.dart';
 
 class GameScreen extends StatelessWidget {
   const GameScreen({super.key, required this.difficulty});
@@ -13,7 +15,10 @@ class GameScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => GameViewModel(difficulty: difficulty),
+      create: (ctx) => GameViewModel(
+        difficulty: difficulty,
+        validator: ctx.read<WordValidator>(),
+      ),
       child: const _GameView(),
     );
   }
@@ -27,7 +32,8 @@ class _GameView extends StatelessWidget {
     final vm = context.watch<GameViewModel>();
     return Scaffold(
       appBar: AppBar(
-        title: Text('${vm.difficulty.label} - ${vm.board.size}x${vm.board.size}'),
+        title:
+            Text('${vm.difficulty.label} - ${vm.board.size}x${vm.board.size}'),
         actions: [
           IconButton(
             tooltip: 'Gridi karistir',
@@ -42,21 +48,20 @@ class _GameView extends StatelessWidget {
           child: Column(
             children: [
               _HudRow(score: vm.score, moves: vm.remainingMoves),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
+              const WordPreviewBar(),
+              const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
                   color: AppColors.surface,
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: GameBoardView(board: vm.board),
+                child: const GameBoardView(),
               ),
-              const SizedBox(height: 16),
-              const Text(
-                'Sonraki faz: harfleri surukleyip kelime olusturma.',
-                style: TextStyle(color: AppColors.textSecondary),
-                textAlign: TextAlign.center,
-              ),
+              const SizedBox(height: 12),
+              if (vm.isGameOver)
+                _GameOverBanner(score: vm.score, longestWord: vm.longestWord),
             ],
           ),
         ),
@@ -129,6 +134,47 @@ class _HudChip extends StatelessWidget {
                       fontSize: 18,
                       fontWeight: FontWeight.w700)),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GameOverBanner extends StatelessWidget {
+  const _GameOverBanner({required this.score, required this.longestWord});
+  final int score;
+  final String longestWord;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          const Text(
+            'Hamleler bitti!',
+            style: TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          Text('Skor: $score',
+              style: const TextStyle(color: AppColors.accent, fontSize: 16)),
+          if (longestWord.isNotEmpty)
+            Text('En uzun kelime: $longestWord',
+                style: const TextStyle(
+                    color: AppColors.textSecondary, fontSize: 14)),
+          const SizedBox(height: 12),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Ana Ekrana Don'),
           ),
         ],
       ),
