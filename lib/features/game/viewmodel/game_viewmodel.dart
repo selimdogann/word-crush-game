@@ -1,9 +1,11 @@
 import 'package:flutter/foundation.dart';
+import '../../../core/constants/turkish_letters.dart';
 import '../../../data/models/board.dart';
 import '../../../data/models/cell.dart';
 import '../../../data/models/difficulty.dart';
 import '../../../data/services/board_factory.dart';
 import '../../../data/services/letter_generator.dart';
+import '../../../data/services/power_executor.dart';
 import '../../../data/services/word_validator.dart';
 
 enum TurnFeedbackType { none, success, invalid, short }
@@ -12,12 +14,22 @@ class TurnFeedback {
   final TurnFeedbackType type;
   final String word;
   final int earnedScore;
+  final int baseScore;
+  final int comboScore;
+  final int powerScore;
+  final List<String> subWords;
+  final CellPower power;
   final String message;
 
   const TurnFeedback({
     required this.type,
     this.word = '',
     this.earnedScore = 0,
+    this.baseScore = 0,
+    this.comboScore = 0,
+    this.powerScore = 0,
+    this.subWords = const [],
+    this.power = CellPower.none,
     this.message = '',
   });
 
@@ -30,9 +42,11 @@ class GameViewModel extends ChangeNotifier {
     required WordValidator validator,
     BoardFactory? factory,
     LetterGenerator? generator,
+    PowerExecutor? powerExecutor,
   })  : _validator = validator,
         _factory = factory ?? BoardFactory(),
-        _generator = generator ?? LetterGenerator() {
+        _generator = generator ?? LetterGenerator(),
+        _power = powerExecutor ?? const PowerExecutor() {
     _board = _factory.create(difficulty);
     _remainingMoves = difficulty.moveCount;
   }
@@ -41,6 +55,7 @@ class GameViewModel extends ChangeNotifier {
   final WordValidator _validator;
   final BoardFactory _factory;
   final LetterGenerator _generator;
+  final PowerExecutor _power;
 
   late Board _board;
   late int _remainingMoves;
@@ -69,6 +84,9 @@ class GameViewModel extends ChangeNotifier {
     }
     return sum;
   }
+
+  CellPower get previewPower =>
+      CellPower.fromWordLength(_selection.length);
 
   bool isSelected(Cell cell) => _selection.contains(cell);
 
@@ -110,6 +128,7 @@ class GameViewModel extends ChangeNotifier {
   Future<void> commitSelection() async {
     if (isGameOver) return;
     if (_selection.isEmpty) return;
+
     final result = _validator.validate(currentWord);
     if (!result.isValid) {
       _feedback = TurnFeedback(
@@ -125,24 +144,55 @@ class GameViewModel extends ChangeNotifier {
       return;
     }
 
-    final removedIds = _selection.map((c) => c.id).toSet();
-    _score += result.score;
+    final baseScore = result.score;
+    final subWords = _validator.findSubWords(result.word);
+    final comboScore = subWords.fold<int>(0, (sum, w) => sum + _wordScore(w));
+    final power = CellPower.fromWordLength(result.word.length);
+    final selectedIds = _selection.map((c) => c.id).toSet();
+    final powerIds = _power
+        .extraCellsFor(board: _board, selection: _selection, power: power)
+        .difference(selectedIds);
+    final powerScore = powerIds.fold<int>(
+      0,
+      (sum, id) => sum + _board.grid
+          .expand((row) => row)
+          .firstWhere((c) => c.id == id)
+          .point,
+    );
+
+    final totalScore = baseScore + comboScore + powerScore;
+    _score += totalScore;
     _totalWords += 1;
     if (result.word.length > _longestWord.length) {
       _longestWord = result.word;
     }
+
     _feedback = TurnFeedback(
       type: TurnFeedbackType.success,
       word: result.word,
-      earnedScore: result.score,
-      message: '+${result.score} puan',
+      earnedScore: totalScore,
+      baseScore: baseScore,
+      comboScore: comboScore,
+      powerScore: powerScore,
+      subWords: subWords,
+      power: power,
+      message: '+$totalScore puan',
     );
-    _board = _board
-        .withRemovedCells(removedIds)
-        .applyGravity(_generator.next);
+
+    final removedIds = {...selectedIds, ...powerIds};
+    _board =
+        _board.withRemovedCells(removedIds).applyGravity(_generator.next);
     _selection.clear();
     _remainingMoves = (_remainingMoves - 1).clamp(0, _remainingMoves);
     notifyListeners();
+  }
+
+  int _wordScore(String word) {
+    var total = 0;
+    for (final ch in word.split('')) {
+      total += TurkishLetters.pointOf(ch);
+    }
+    return total;
   }
 
   void clearFeedback() {
