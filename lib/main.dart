@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'app.dart';
 import 'data/repositories/user_repository.dart';
+import 'data/services/dictionary_service.dart';
 import 'data/services/preferences_service.dart';
 
 Future<void> main() async {
@@ -12,6 +13,10 @@ Future<void> main() async {
 
   final prefs = await PreferencesService.getInstance();
   final userRepo = UserRepository(prefs);
+  final dictionary = await DictionaryService.load();
 
-  runApp(WordCrushApp(userRepository: userRepo));
+  runApp(WordCrushApp(
+    userRepository: userRepo,
+    dictionary: dictionary,
+  ));
 }

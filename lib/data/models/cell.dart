@@ -13,7 +13,12 @@ class Cell {
     this.power = CellPower.none,
   });
 
+  const Cell.empty({required this.row, required this.col})
+      : letter = '',
+        power = CellPower.none;
+
   int get point => TurkishLetters.pointOf(letter);
+  bool get isEmpty => letter.isEmpty;
 
   Cell copyWith({int? row, int? col, String? letter, CellPower? power}) => Cell(
         row: row ?? this.row,
@@ -50,13 +55,28 @@ enum CellPower {
   String get icon {
     switch (this) {
       case CellPower.rowClear:
-        return '⇆';
+        return 'S';
       case CellPower.columnClear:
-        return '⇅';
+        return 'D';
       case CellPower.areaBlast:
-        return '✹';
+        return 'A';
       case CellPower.megaBlast:
-        return '✪';
+        return 'M';
+      case CellPower.none:
+        return '';
+    }
+  }
+
+  String get label {
+    switch (this) {
+      case CellPower.rowClear:
+        return 'Satir Temizleyici';
+      case CellPower.columnClear:
+        return 'Sutun Temizleyici';
+      case CellPower.areaBlast:
+        return 'Alan Patlatici';
+      case CellPower.megaBlast:
+        return 'Mega Patlatici';
       case CellPower.none:
         return '';
     }
