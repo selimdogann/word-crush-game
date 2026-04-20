@@ -38,8 +38,10 @@ class _HomeView extends StatelessWidget {
               GradientButton(
                 label: 'Yeni Oyun',
                 icon: Icons.play_arrow_rounded,
-                onPressed: () =>
-                    Navigator.of(context).pushNamed(AppRoutes.newGame),
+                onPressed: () async {
+                  await Navigator.of(context).pushNamed(AppRoutes.newGame);
+                  if (context.mounted) context.read<HomeViewModel>().refresh();
+                },
               ),
               const SizedBox(height: 14),
               GradientButton(
@@ -54,8 +56,10 @@ class _HomeView extends StatelessWidget {
                 label: 'Market',
                 icon: Icons.storefront_rounded,
                 colors: const [Color(0xFFFF7675), Color(0xFFD63031)],
-                onPressed: () =>
-                    Navigator.of(context).pushNamed(AppRoutes.market),
+                onPressed: () async {
+                  await Navigator.of(context).pushNamed(AppRoutes.market);
+                  if (context.mounted) context.read<HomeViewModel>().refresh();
+                },
               ),
               const Spacer(),
             ],

@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../data/models/difficulty.dart';
+import '../../../data/repositories/inventory_repository.dart';
+import '../../../data/repositories/stats_repository.dart';
+import '../../../data/repositories/user_repository.dart';
 import '../../../data/services/word_validator.dart';
 import '../viewmodel/game_viewmodel.dart';
 import '../widgets/game_board_view.dart';
+import '../widgets/joker_bar.dart';
 import '../widgets/word_preview_bar.dart';
 
 class GameScreen extends StatelessWidget {
@@ -18,6 +22,9 @@ class GameScreen extends StatelessWidget {
       create: (ctx) => GameViewModel(
         difficulty: difficulty,
         validator: ctx.read<WordValidator>(),
+        statsRepo: ctx.read<StatsRepository>(),
+        userRepo: ctx.read<UserRepository>(),
+        inventoryRepo: ctx.read<InventoryRepository>(),
       ),
       child: const _GameView(),
     );
@@ -47,7 +54,11 @@ class _GameView extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              _HudRow(score: vm.score, moves: vm.remainingMoves),
+              _HudRow(
+                score: vm.score,
+                moves: vm.remainingMoves,
+                multiplier: vm.scoreMultiplier,
+              ),
               const SizedBox(height: 12),
               const WordPreviewBar(),
               const SizedBox(height: 12),
@@ -60,6 +71,16 @@ class _GameView extends StatelessWidget {
                 child: const GameBoardView(),
               ),
               const SizedBox(height: 12),
+              const JokerBar(),
+              if (vm.jokerMessage != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: _JokerToast(
+                    message: vm.jokerMessage!,
+                    onClose: vm.clearJokerMessage,
+                  ),
+                ),
+              const SizedBox(height: 12),
               if (vm.isGameOver)
                 _GameOverBanner(score: vm.score, longestWord: vm.longestWord),
             ],
@@ -71,9 +92,14 @@ class _GameView extends StatelessWidget {
 }
 
 class _HudRow extends StatelessWidget {
-  const _HudRow({required this.score, required this.moves});
+  const _HudRow({
+    required this.score,
+    required this.moves,
+    required this.multiplier,
+  });
   final int score;
   final int moves;
+  final int multiplier;
 
   @override
   Widget build(BuildContext context) {
@@ -82,7 +108,7 @@ class _HudRow extends StatelessWidget {
       children: [
         _HudChip(
           icon: Icons.star_rounded,
-          label: 'Puan',
+          label: multiplier > 1 ? 'Puan (x$multiplier)' : 'Puan',
           value: '$score',
           color: AppColors.accent,
         ),
@@ -93,6 +119,42 @@ class _HudRow extends StatelessWidget {
           color: AppColors.primary,
         ),
       ],
+    );
+  }
+}
+
+class _JokerToast extends StatelessWidget {
+  const _JokerToast({required this.message, required this.onClose});
+  final String message;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.22),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.flash_on_rounded,
+              color: AppColors.primary, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(message,
+                style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600)),
+          ),
+          GestureDetector(
+            onTap: onClose,
+            child: const Icon(Icons.close,
+                color: AppColors.textSecondary, size: 18),
+          ),
+        ],
+      ),
     );
   }
 }

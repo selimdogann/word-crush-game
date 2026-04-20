@@ -8,6 +8,7 @@ class AppConstants {
   static const String prefStats = 'pref_stats';
   static const String prefGameHistory = 'pref_game_history';
   static const String prefInventory = 'pref_inventory';
+  static const String prefNextScoreMultiplier = 'pref_next_score_multiplier';
 
   static const int minWordLength = 3;
   static const int initialCoins = 500;

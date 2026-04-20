@@ -3,7 +3,14 @@ import '../../../core/constants/turkish_letters.dart';
 import '../../../data/models/board.dart';
 import '../../../data/models/cell.dart';
 import '../../../data/models/difficulty.dart';
+import '../../../data/models/inventory_model.dart';
+import '../../../data/models/joker.dart';
+import '../../../data/models/stats_model.dart';
+import '../../../data/repositories/inventory_repository.dart';
+import '../../../data/repositories/stats_repository.dart';
+import '../../../data/repositories/user_repository.dart';
 import '../../../data/services/board_factory.dart';
+import '../../../data/services/joker_executor.dart';
 import '../../../data/services/letter_generator.dart';
 import '../../../data/services/power_executor.dart';
 import '../../../data/services/word_validator.dart';
@@ -40,30 +47,50 @@ class GameViewModel extends ChangeNotifier {
   GameViewModel({
     required this.difficulty,
     required WordValidator validator,
+    required StatsRepository statsRepo,
+    required UserRepository userRepo,
+    required InventoryRepository inventoryRepo,
     BoardFactory? factory,
     LetterGenerator? generator,
     PowerExecutor? powerExecutor,
+    JokerExecutor? jokerExecutor,
   })  : _validator = validator,
+        _statsRepo = statsRepo,
+        _userRepo = userRepo,
+        _inventoryRepo = inventoryRepo,
         _factory = factory ?? BoardFactory(),
         _generator = generator ?? LetterGenerator(),
-        _power = powerExecutor ?? const PowerExecutor() {
+        _power = powerExecutor ?? const PowerExecutor(),
+        _joker = jokerExecutor ?? JokerExecutor() {
     _board = _factory.create(difficulty);
     _remainingMoves = difficulty.moveCount;
+    _startedAt = DateTime.now();
+    _inventoryModel = _inventoryRepo.current;
+    _loadMultiplier();
   }
 
   final Difficulty difficulty;
   final WordValidator _validator;
+  final StatsRepository _statsRepo;
+  final UserRepository _userRepo;
+  final InventoryRepository _inventoryRepo;
   final BoardFactory _factory;
   final LetterGenerator _generator;
   final PowerExecutor _power;
+  final JokerExecutor _joker;
 
   late Board _board;
   late int _remainingMoves;
+  late DateTime _startedAt;
   int _score = 0;
   int _totalWords = 0;
   String _longestWord = '';
   final List<Cell> _selection = [];
   TurnFeedback _feedback = TurnFeedback.empty;
+  bool _finalized = false;
+  InventoryModel _inventoryModel = const InventoryModel();
+  int _scoreMultiplier = 1;
+  String? _jokerMessage;
 
   Board get board => _board;
   int get remainingMoves => _remainingMoves;
@@ -72,7 +99,20 @@ class GameViewModel extends ChangeNotifier {
   String get longestWord => _longestWord;
   List<Cell> get selection => List.unmodifiable(_selection);
   TurnFeedback get feedback => _feedback;
+  InventoryModel get inventory => _inventoryModel;
+  int get scoreMultiplier => _scoreMultiplier;
+  String? get jokerMessage => _jokerMessage;
   bool get isGameOver => _remainingMoves <= 0;
+  int get durationSeconds =>
+      DateTime.now().difference(_startedAt).inSeconds;
+
+  Future<void> _loadMultiplier() async {
+    final value = await _userRepo.consumeNextScoreMultiplier();
+    if (value != _scoreMultiplier) {
+      _scoreMultiplier = value;
+      notifyListeners();
+    }
+  }
 
   String get currentWord => _selection.map((c) => c.letter).join();
 
@@ -89,7 +129,6 @@ class GameViewModel extends ChangeNotifier {
       CellPower.fromWordLength(_selection.length);
 
   bool isSelected(Cell cell) => _selection.contains(cell);
-
   int indexOfSelected(Cell cell) => _selection.indexOf(cell);
 
   void startSelection(Cell cell) {
@@ -140,6 +179,7 @@ class GameViewModel extends ChangeNotifier {
       );
       _selection.clear();
       _remainingMoves = (_remainingMoves - 1).clamp(0, _remainingMoves);
+      await _finalizeIfNeeded();
       notifyListeners();
       return;
     }
@@ -154,13 +194,15 @@ class GameViewModel extends ChangeNotifier {
         .difference(selectedIds);
     final powerScore = powerIds.fold<int>(
       0,
-      (sum, id) => sum + _board.grid
-          .expand((row) => row)
-          .firstWhere((c) => c.id == id)
-          .point,
+      (sum, id) => sum +
+          _board.grid
+              .expand((row) => row)
+              .firstWhere((c) => c.id == id)
+              .point,
     );
 
-    final totalScore = baseScore + comboScore + powerScore;
+    final totalScore =
+        (baseScore + comboScore + powerScore) * _scoreMultiplier;
     _score += totalScore;
     _totalWords += 1;
     if (result.word.length > _longestWord.length) {
@@ -184,6 +226,7 @@ class GameViewModel extends ChangeNotifier {
         _board.withRemovedCells(removedIds).applyGravity(_generator.next);
     _selection.clear();
     _remainingMoves = (_remainingMoves - 1).clamp(0, _remainingMoves);
+    await _finalizeIfNeeded();
     notifyListeners();
   }
 
@@ -195,6 +238,30 @@ class GameViewModel extends ChangeNotifier {
     return total;
   }
 
+  Future<void> _finalizeIfNeeded() async {
+    if (_finalized || !isGameOver) return;
+    _finalized = true;
+    final result = GameResult(
+      score: _score,
+      wordCount: _totalWords,
+      longestWord: _longestWord,
+      durationSeconds: durationSeconds,
+      difficultyKey: difficulty.key,
+    );
+    await _statsRepo.recordGame(result);
+    final coinReward = (_score / 10).floor();
+    if (coinReward > 0) {
+      await _userRepo.setCoins(_userRepo.getCoins() + coinReward);
+    }
+  }
+
+  Future<void> abandonGame() async {
+    if (_finalized) return;
+    _remainingMoves = 0;
+    await _finalizeIfNeeded();
+    notifyListeners();
+  }
+
   void clearFeedback() {
     if (_feedback.type == TurnFeedbackType.none) return;
     _feedback = TurnFeedback.empty;
@@ -204,6 +271,32 @@ class GameViewModel extends ChangeNotifier {
   void reshuffleBoard() {
     _board = _factory.reshuffle(_board);
     _selection.clear();
+    notifyListeners();
+  }
+
+  Future<bool> useJoker(Joker joker) async {
+    if (isGameOver) return false;
+    if (_inventoryModel.countOf(joker) <= 0) {
+      _jokerMessage = 'Stok yok';
+      notifyListeners();
+      return false;
+    }
+    final outcome = _joker.apply(_board, joker);
+    _board = outcome.board;
+    _selection.clear();
+    _inventoryModel = await _inventoryRepo.consume(joker);
+    if (outcome.pendingScoreMultiplier > 1) {
+      await _userRepo
+          .setNextScoreMultiplier(outcome.pendingScoreMultiplier);
+    }
+    _jokerMessage = outcome.message;
+    notifyListeners();
+    return true;
+  }
+
+  void clearJokerMessage() {
+    if (_jokerMessage == null) return;
+    _jokerMessage = null;
     notifyListeners();
   }
 }
