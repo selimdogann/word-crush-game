@@ -21,6 +21,20 @@ class UserRepository {
   Future<void> setCoins(int value) =>
       _prefs.setInt(AppConstants.prefCoins, value < 0 ? 0 : value);
 
+  int getNextScoreMultiplier() =>
+      _prefs.getInt(AppConstants.prefNextScoreMultiplier) ?? 1;
+
+  Future<void> setNextScoreMultiplier(int value) =>
+      _prefs.setInt(AppConstants.prefNextScoreMultiplier, value < 1 ? 1 : value);
+
+  Future<int> consumeNextScoreMultiplier() async {
+    final value = getNextScoreMultiplier();
+    if (value > 1) {
+      await _prefs.setInt(AppConstants.prefNextScoreMultiplier, 1);
+    }
+    return value;
+  }
+
   bool hasUsername() {
     final name = getUsername();
     return name != null && name.isNotEmpty;
