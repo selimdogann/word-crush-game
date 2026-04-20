@@ -7,7 +7,7 @@ class Board {
 
   const Board({required this.difficulty, required this.grid});
 
-  int get size => difficulty.gridSize;
+  int get size => grid.length;
 
   Cell cellAt(int row, int col) => grid[row][col];
 
@@ -28,5 +28,55 @@ class Board {
       }
     }
     return list;
+  }
+
+  bool isNeighbor(Cell a, Cell b) {
+    final dr = (a.row - b.row).abs();
+    final dc = (a.col - b.col).abs();
+    return (dr <= 1 && dc <= 1) && !(dr == 0 && dc == 0);
+  }
+
+  Board withRemovedCells(Set<String> removedIds) {
+    final newGrid = List<List<Cell>>.generate(
+      size,
+      (r) => List<Cell>.generate(size, (c) {
+        final current = grid[r][c];
+        if (removedIds.contains(current.id)) {
+          return Cell.empty(row: r, col: c);
+        }
+        return current;
+      }),
+    );
+    return copyWithGrid(newGrid);
+  }
+
+  Board applyGravity(String Function() nextLetter) {
+    final newGrid = List<List<Cell>>.generate(
+      size,
+      (r) => List<Cell>.filled(
+        size,
+        const Cell(row: -1, col: -1, letter: ''),
+        growable: false,
+      ),
+    );
+    for (var c = 0; c < size; c++) {
+      var writeRow = size - 1;
+      for (var r = size - 1; r >= 0; r--) {
+        final current = grid[r][c];
+        if (!current.isEmpty) {
+          newGrid[writeRow][c] = Cell(
+            row: writeRow,
+            col: c,
+            letter: current.letter,
+            power: current.power,
+          );
+          writeRow--;
+        }
+      }
+      for (var r = writeRow; r >= 0; r--) {
+        newGrid[r][c] = Cell(row: r, col: c, letter: nextLetter());
+      }
+    }
+    return copyWithGrid(newGrid);
   }
 }

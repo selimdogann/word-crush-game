@@ -7,25 +7,37 @@ class LetterTile extends StatelessWidget {
     super.key,
     required this.cell,
     this.selected = false,
+    this.selectionIndex,
   });
 
   final Cell cell;
   final bool selected;
+  final int? selectionIndex;
 
   @override
   Widget build(BuildContext context) {
+    if (cell.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
     final bg = selected ? AppColors.tileSelected : AppColors.cardTile;
-    final fg = AppColors.textOnTile;
+    const fg = AppColors.textOnTile;
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 140),
       margin: const EdgeInsets.all(2),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(10),
+        border: selected
+            ? Border.all(color: AppColors.primary, width: 2)
+            : null,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.18),
-            blurRadius: 3,
+            color: selected
+                ? AppColors.primary.withValues(alpha: 0.35)
+                : Colors.black.withValues(alpha: 0.18),
+            blurRadius: selected ? 8 : 3,
             offset: const Offset(0, 2),
           ),
         ],
@@ -35,7 +47,7 @@ class LetterTile extends StatelessWidget {
           Center(
             child: Text(
               cell.letter,
-              style: TextStyle(
+              style: const TextStyle(
                 color: fg,
                 fontSize: 20,
                 fontWeight: FontWeight.w700,
@@ -54,6 +66,28 @@ class LetterTile extends StatelessWidget {
               ),
             ),
           ),
+          if (selectionIndex != null)
+            Positioned(
+              left: 4,
+              top: 2,
+              child: Container(
+                width: 16,
+                height: 16,
+                decoration: const BoxDecoration(
+                  color: AppColors.primary,
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  '${selectionIndex! + 1}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

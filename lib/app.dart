@@ -4,17 +4,28 @@ import 'core/constants/app_constants.dart';
 import 'core/routes/app_routes.dart';
 import 'core/theme/app_theme.dart';
 import 'data/repositories/user_repository.dart';
+import 'data/services/dictionary_service.dart';
+import 'data/services/word_validator.dart';
 
 class WordCrushApp extends StatelessWidget {
-  const WordCrushApp({super.key, required this.userRepository});
+  const WordCrushApp({
+    super.key,
+    required this.userRepository,
+    required this.dictionary,
+  });
 
   final UserRepository userRepository;
+  final DictionaryService dictionary;
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
         Provider<UserRepository>.value(value: userRepository),
+        Provider<DictionaryService>.value(value: dictionary),
+        Provider<WordValidator>(
+          create: (_) => WordValidator(dictionary),
+        ),
       ],
       child: MaterialApp(
         title: AppConstants.appName,
